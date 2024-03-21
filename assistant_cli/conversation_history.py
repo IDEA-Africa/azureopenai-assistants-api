@@ -1,8 +1,18 @@
 import json
 import os
 import datetime
-import readline
 
+# import readline
+
+# pip install pyreadline3
+# pip install pyreadline # olf project
+if os.name != "nt":  # If the OS is not Windows, use the readline library
+    import readline
+    
+# try:
+#     import readline
+# except ImportError:
+#     import pyreadline as readline
 
 class ConversationHistory:
     def __init__(self, history_dir, history_file_format="%Y-%m-%d_history.json"):
