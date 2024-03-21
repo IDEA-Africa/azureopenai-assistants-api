@@ -1,3 +1,5 @@
+# assistant_cli\assistant.py
+
 import sys
 import getpass
 import config
