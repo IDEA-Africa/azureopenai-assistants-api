@@ -1,16 +1,27 @@
 # core\assistant.py
+
 import time
 import json
 import logging
+
+from openai import AzureOpenAI
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
+
 from typing import Optional, Callable, List, Dict, Generator
-from openai import OpenAI, OpenAIError
+# from openai import OpenAI, OpenAIError # replaced by AzureOpenAI
 from core.parser import FunctionDefinitionParser
 
 logger = logging.getLogger(__name__)
 
 
 class AssistantManager:
-    def __init__(self, api_key, assistant_id, model="gpt-4-1106-preview", functions: Optional[List[Callable]] = None):
+    # def __init__(self, api_key, assistant_id, model="gpt-4-1106-preview", functions: Optional[List[Callable]] = None):
+    
+    def __init__(self, api_key: str, azure_endpoint: str, api_version: str,  assistant_id, model: str = "gpt-4", functions: Optional[List[Callable]] = None):
         """
         Initialize the AssistantManager with the necessary OpenAI parameters.
 
@@ -25,17 +36,28 @@ class AssistantManager:
         if not api_key or not assistant_id:
             raise ValueError("API key and Assistant ID are required")
 
-        self.client = OpenAI(api_key=api_key)
+        # self.client = OpenAI(api_key=api_key)
+        self.client = AzureOpenAI(
+            api_key=api_key,
+            api_version=api_version,
+            azure_endpoint=azure_endpoint
+        )
         self.assistant_id = assistant_id
         self.model = model
         self.function_parser = FunctionDefinitionParser()  # Initialize the parser first
         self.functions = self._parse_functions(functions)  # Then use it in _parse_functions
         self.func_mapping = self._create_func_mapping(functions)
 
+        # # Unpacking the generator here
+        # self.tools = [
+        #     {"type": "code_interpreter"},
+        #     {"type": "retrieval"},
+        #     *self.functions  # Unpack the generator
+        # ]
+        
         # Unpacking the generator here
         self.tools = [
             {"type": "code_interpreter"},
-            {"type": "retrieval"},
             *self.functions  # Unpack the generator
         ]
 
@@ -67,9 +89,12 @@ class AssistantManager:
         try:
             thread = self.client.beta.threads.create()
             return thread
-        except OpenAIError as e:
-            logger.error(f"Failed to create thread: {e}")
-            raise
+        # TODO: fix the error handling, switch from OpenAI to AzureOpenAI LLM
+        # except OpenAIError as e:
+        #     logger.error(f"Failed to create thread: {e}")
+        #     raise
+        except Exception as e:  # Broad catch which is generally not recommended
+            print(f"An error occurred: {e}")
 
     def delete_thread(self, thread_id):
         """
@@ -83,9 +108,12 @@ class AssistantManager:
         """
         try:
             self.client.beta.threads.delete(thread_id)
-        except OpenAIError as e:
-            logger.error(f"Failed to delete thread {thread_id}: {e}")
-            raise
+        # except OpenAIError as e:
+        #     logger.error(f"Failed to delete thread {thread_id}: {e}")
+        #     raise
+        
+        except Exception as e:  # Broad catch which is generally not recommended
+            print(f"An error occurred: {e}")
 
     def _add_message_to_thread(self, thread_id, role, content, file_ids=None):
         """
@@ -108,9 +136,11 @@ class AssistantManager:
                 content=content,
                 file_ids=file_ids
             )
-        except OpenAIError as e:
-            logger.error(f"Failed to add message to thread {thread_id}: {e}")
-            raise
+        # except OpenAIError as e:
+        #     logger.error(f"Failed to add message to thread {thread_id}: {e}")
+        #     raise
+        except Exception as e:  # Broad catch which is generally not recommended
+            print(f"An error occurred: {e}")
 
     def _run_assistant(self, thread_id, instructions):
         """
@@ -135,9 +165,11 @@ class AssistantManager:
                 tools=self.tools
             )
             return run
-        except OpenAIError as e:
-            logger.error(f"Failed to run assistant on thread {thread_id}: {e}")
-            raise
+        # except OpenAIError as e:
+        #     logger.error(f"Failed to run assistant on thread {thread_id}: {e}")
+        #     raise
+        except Exception as e:  # Broad catch which is generally not recommended
+            print(f"An error occurred: {e}")
 
     def cancel_run(self, run_id, thread_id):
         """
@@ -152,9 +184,11 @@ class AssistantManager:
         """
         try:
             self.client.beta.threads.runs.cancel(thread_id=thread_id, run_id=run_id)
-        except OpenAIError as e:
-            logger.error(f"Failed to cancel run {run_id} on thread {thread_id}: {e}")
-            raise
+        # except OpenAIError as e:
+        #     logger.error(f"Failed to cancel run {run_id} on thread {thread_id}: {e}")
+        #     raise
+        except Exception as e:  # Broad catch which is generally not recommended
+            print(f"An error occurred: {e}")
 
     def _wait_for_run_completion(self, run_id, thread_id, check_interval=3, max_wait_time=10):
         """
@@ -202,9 +236,12 @@ class AssistantManager:
                     break
 
                 time.sleep(check_interval)
-            except OpenAIError as e:
-                logger.error(f"Error while waiting for run completion: {e}")
-                raise
+            # except OpenAIError as e:
+            #     logger.error(f"Error while waiting for run completion: {e}")
+            #     raise
+            except Exception as e:  # Broad catch which is generally not recommended
+                print(f"An error occurred: {e}")
+            
 
     def _handle_tool_call(self, required_actions):
         """
@@ -275,9 +312,11 @@ class AssistantManager:
         try:
             messages = self.client.beta.threads.messages.list(thread_id)
             return messages
-        except OpenAIError as e:
-            logger.error(f"Failed to retrieve messages from thread {thread_id}: {e}")
-            raise
+        # except OpenAIError as e:
+        #     logger.error(f"Failed to retrieve messages from thread {thread_id}: {e}")
+        #     raise
+        except Exception as e:  # Broad catch
+            print(f"An error occurred: {e}")
 
     def get_assistant_response(self, instructions, user_message, file_ids=None, thread_id=None, check_interval=5,
                                max_wait_time=None):
@@ -308,6 +347,8 @@ class AssistantManager:
 
             return self._wait_for_run_completion(thread_id=thread_id, run_id=run.id, check_interval=check_interval,
                                                  max_wait_time=max_wait_time)
-        except OpenAIError as e:
-            logger.error(f"Failed to get assistant response: {e}")
-            raise
+        # except OpenAIError as e:
+        #     logger.error(f"Failed to get assistant response: {e}")
+        #     raise
+        except Exception as e:  # Broad catch which is generally not recommended
+            print(f"An error occurred: {e}")
